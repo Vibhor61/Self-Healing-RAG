@@ -1,7 +1,3 @@
-CREATE DATABASE rag_db;
-
-CREATE USER rag_user;
-
 ALTER ROLE rag_user SET client_encoding TO 'utf8';
 ALTER ROLE rag_user SET default_transaction_isolation TO 'read committed';
 ALTER ROLE rag_user SET timezone TO 'UTC';

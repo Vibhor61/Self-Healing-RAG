@@ -1,0 +1,29 @@
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: rag_postgres
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    
+    ports: ${POSTGRES_PORT}:5102
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag_qdrant
+    env_file: .env
+    environment:
+      QDRANT__SERVICE__PORT: ${QDRANT_PORT}
+      QDRANT__STORAGE__PATH: /qdrant/storage
+    ports:
+      - ${QDRANT_PORT}:5104
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  

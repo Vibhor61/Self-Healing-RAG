@@ -1,6 +1,6 @@
 from psycopg2.extras import execute_values
 import json
-from scripts.ingestion_helper import iter_rows,extract_metadata,extract_gzip,extract_reviews
+from scripts.ingestion_helper import iter_rows,extract_metadata,extract_reviews
 import psycopg2
 import argparse
 import os
@@ -127,34 +127,6 @@ def run_loader(product_file_path:str, review_file_path:str, run_date:str, overwr
         raise
     finally:
         conn.close()
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="Loading Amazon data into Postgres")
-    
-    parser.add_argument(
-        "--products",
-        default = "Data/meta_Electronics.json.gz",
-        help="Path to metadata file"
-    )
-    
-    parser.add_argument(
-        "--reviews",
-        default = "Data/Electronics.json.gz",
-        help="Path to review file"
-    )
-    
-    parser.add_argument(
-        "--run-date",
-        required=True,
-        help="Run date partition (YYYY-MM-DD)"
-    )
-
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite partition for run_date"
-    )
 
     
 def run_loader(product_file_path:str, review_file_path:str, run_date:str, overwrite_partition:bool = False):

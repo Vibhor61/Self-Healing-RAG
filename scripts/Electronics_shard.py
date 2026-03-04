@@ -1,6 +1,7 @@
 import gzip
 import json
-from scripts.ingestion_helper import iter_rows, extract_reviews
+from ingestion_helper import iter_rows, extract_reviews
+import os
 
 INPUT_FILE = "Data/raw_data/Electronics.json.gz"
 OUTPUT_PREFIX = "Data/shards"
@@ -11,7 +12,8 @@ def shard_reviews():
     count = 0 
     total = 0
 
-    output = gzip.open(f"{OUTPUT_PREFIX}_{shard_id:03d}.jsonl.gz","wt")
+    os.makedirs(OUTPUT_PREFIX, exist_ok=True)
+    output = gzip.open(f"{OUTPUT_PREFIX}/shard_{shard_id:03d}.jsonl.gz","wt")
 
     for row in iter_rows(INPUT_FILE):
 
@@ -27,7 +29,7 @@ def shard_reviews():
             output.close()
             shard_id += 1
             count = 0
-            output = gzip.open(f"{OUTPUT_PREFIX}_{shard_id:03d}.jsonl.gz","wt")
+            output = gzip.open(f"{OUTPUT_PREFIX}/shard_{shard_id:03d}.jsonl.gz","wt")
 
 
     output.close()

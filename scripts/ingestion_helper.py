@@ -5,14 +5,14 @@ import hashlib
 import re
 
 
-def extract_gzip(path:str) :
+def extract_shard(path:str) :
     if path.endswith(".gz"):
         return gzip.open(path, "rt", encoding="utf-8", errors="ignore")
     return open(path, "rt", encoding="utf-8", errors="ignore")
 
 
 def iter_rows(path : str) :
-    with extract_gzip(path) as file:
+    with extract_shard(path) as file:
         for line in file:
             line = line.strip()
             if not line:
