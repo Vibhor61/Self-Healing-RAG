@@ -16,8 +16,6 @@ CREATE TABLE IF NOT EXISTS products_table (
   )STORED
 );
 
-CREATE INDEX IF NOT EXISTS idx_asin_id ON products_table(asin);
-
 
 CREATE TABLE IF NOT EXISTS reviews_table (
   review_id TEXT PRIMARY KEY,

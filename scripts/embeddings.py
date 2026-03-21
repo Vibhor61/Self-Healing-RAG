@@ -4,6 +4,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
 import psycopg2
+import uuid
 
 DB_CONFIG = {
     "host" : os.getenv("POSTGRES_HOST"),
@@ -23,11 +24,11 @@ def get_connection():
 
 def fetch_reviews(conn):
     with conn.cursor() as cur:
-        query = "SELECT review_id,asin_id,review_text,summary_text FROM reviews_table WHERE review_text IS NOT NULL OR summary_text IS NOT NULL;"
+        query = "SELECT review_id,asin,review_text,summary_text FROM reviews_table WHERE review_text IS NOT NULL OR summary_text IS NOT NULL;"
         cur.execute(query)
         rows = cur.fetchall()
         
-    df = pd.DataFrame(rows, columns=['review_id', 'asin_id', 'review_text', 'summary_text'])
+    df = pd.DataFrame(rows, columns=['review_id', 'asin', 'review_text', 'summary_text'])
     df['text'] = df['review_text'].fillna('') + ' ' + df['summary_text'].fillna('')
     df.drop(columns=['review_text', 'summary_text'], inplace=True)
     return df
@@ -51,10 +52,10 @@ def create_embeddings(df):
 
     points = [
         PointStruct(
-            id=str(row["review_id"]),
+            id = uuid.uuid5(uuid.NAMESPACE_OID, row["review_id"]), 
             vector=emb,
             payload={
-                "asin_id": row["asin_id"],
+                "asin": row["asin"],
                 "text": row["text"],
             },
         )

@@ -130,3 +130,5 @@ def fusion_retrieval(query: str, top_k: int = 5, k :int =60) -> FinalResult:
         })
 
         fused_results.append(copied)
+
+    return fused_results
