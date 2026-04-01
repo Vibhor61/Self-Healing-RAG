@@ -1,6 +1,6 @@
 import gzip
 import json
-from ingestion.ingestion_helper import iter_rows, extract_reviews
+from ingestion_helper import iter_rows, extract_reviews
 import os
 
 INPUT_FILE = "Data/raw_data/Electronics.json.gz"

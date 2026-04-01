@@ -144,7 +144,8 @@ def evaluate_answer(question: str, answer: str, context: str) -> dict:
     {{
         "score": <float between 0.0 and 1.0>,
         "failure_type": "<hallucination|incomplete|irrelevant|refusal|none>",
-        "is_refusal": <true|false>
+        "is_refusal": <true|false>,
+        "root_cause": "<missing_entity_coverage|keyword_miss|semantic_mismatch|none>"
     }}
 
     Scoring guide:
@@ -160,6 +161,11 @@ def evaluate_answer(question: str, answer: str, context: str) -> dict:
     - refusal: answer says it does not have enough information
     - none: answer is good
 
+    Root cause definitions:
+    - missing_entity_coverage: relevant entities/products are missing from context
+    - keyword_miss: sparse retrieval failed due to missing keywords
+    - semantic_mismatch: dense retrieval returned semantically irrelevant results
+    - none: no clear root cause
     Return JSON only, no explanation, no markdown backticks."""
 
     raw = groq_llm.invoke(prompt)
@@ -169,11 +175,13 @@ def evaluate_answer(question: str, answer: str, context: str) -> dict:
         return {
             "score": float(result.get("score", 0.0)),
             "failure_type": result.get("failure_type", "none"),
-            "is_refusal": bool(result.get("is_refusal", False))
+            "is_refusal": bool(result.get("is_refusal", False)),
+            "root_cause": result.get("root_cause", "none")
         }
     except json.JSONDecodeError:
         return {
             "score": 0.0,
             "failure_type": "incomplete",
-            "is_refusal": False
+            "is_refusal": False,
+            "root_cause": "none"
         }

@@ -6,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 import psycopg2
 from typing import List, Optional
 from copy import deepcopy
+import enum
 
 DB_CONFIG = {
     "host" : os.getenv("POSTGRES_HOST"),
@@ -19,6 +20,34 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
 EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+
+POSTGRES_SCORE_THRESHOLD = 0.01
+QDRANT_SCORE_THRESHOLD = 0.5
+
+
+class RetrievalStatus(enum.Enum):
+    Passed = "passed"
+    empty = "empty"
+    low_quality = "low_quality"
+    semantic_failure = "semantic_failure"
+    keyword_miss = "keyword_miss"
+
+
+class QueryType(enum.Enum):
+    
+@dataclass
+class RetrievalSignals:
+    sparse_hit_count: int
+    avg_sparse_score: float        
+    top_sparse_score: float
+
+    dense_hit_count: int
+    avg_dense_score: float       
+    top_dense_score: float
+
+    asin_overlap: int
+    mode_used: str
+
 
 @dataclass 
 class RetrievalResult:
@@ -38,9 +67,48 @@ class FinalResult:
     resolved_asin: Optional[str]
     items: List[RetrievalResult]
 
+    status: RetrievalStatus = RetrievalStatus.Passed
+    failure_reason: Optional[str] = None
+    signals: Optional[RetrievalSignals] = None
+
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
+
+
+def compute_retrieval_signals(sparse_results: List[RetrievalResult], dense_results: List[RetrievalResult], mode_used):
+    sparse_scores = [r.score for r in sparse_results]
+    dense_scores = [r.score for r in dense_results]
+    
+    sparse_hit_count=len(sparse_results),
+    top_sparse_score=max(sparse_scores) if sparse_scores else 0.0,
+    avg_sparse_score=sum(sparse_scores) / len(sparse_scores) if sparse_scores else 0.0,
+
+    dense_hit_count=len(dense_results),
+    top_dense_score=max(dense_scores) if dense_scores else 0.0,
+    avg_dense_score=sum(dense_scores) / len(dense_scores) if dense_scores else 0.0,
+    
+    min_overlap = compute_asin_overlap(sparse_results, dense_results)
+
+    return RetrievalSignals(
+        sparse_hit_count = sparse_hit_count,
+        avg_sparse_score = avg_sparse_score,
+        top_sparse_score = top_sparse_score,
+
+        dense_hit_count = dense_hit_count,
+        avg_dense_score = avg_dense_score,
+        top_dense_score = top_dense_score,
+        asin_overlap = min_overlap,
+        mode_used = mode_used
+    )
+
+def compute_asin_overlap(sparse_results, dense_results):
+    if not sparse_results or not dense_results:
+        return 0
+    
+    sparse_asins = set([r.asin_id for r in sparse_results])
+    dense_asins = set([r.asin_id for r in dense_results])
+    return len(sparse_asins & dense_asins)
 
 
 def sparse_fact_retrieval(query: str, top_k: int = 5) -> List[RetrievalResult]:
@@ -99,6 +167,53 @@ def dense_fact_retrieval(query: str, top_k: int = 5) -> List[RetrievalResult]:
     return retrieval_results
     
 
+def compute_stats(sparse_results, dense_results):
+    if not sparse_results and not dense_results:
+        return {"sparse_count": 0, "dense_count": 0, "overlap_count": 0, "avg_sparse_score": 0, "avg_dense_score": 0}
+    
+    if not sparse_results:
+        dense_asins = set([r.asin_id for r in dense_results])
+        return {
+            "sparse_hits": 0,
+            "dense_hits": len(dense_results),
+            "overlap": 0,
+            "avg_sparse_score":0,
+            "avg_dense_score": sum([r.score for r in dense_results]) / (len(dense_results) or 1),
+        }
+
+    if not dense_results:
+        sparse_asins = set([r.asin_id for r in sparse_results])
+        return {
+            "sparse_hits": len(sparse_results),
+            "dense_hits": 0,
+            "overlap": 0,
+            "avg_sparse_score": sum([r.score for r in sparse_results]) / (len(sparse_results) or 1),
+            "avg_dense_score": 0,
+        }
+    sparse_asins = set([r.asin_id for r in sparse_results])
+    dense_asins = set([r.asin_id for r in dense_results])
+    
+    return {
+        "sparse_hits": len(sparse_results),
+        "dense_hits": len(dense_results),
+        "overlap": len(sparse_asins & dense_asins),
+        "avg_sparse_score": sum([r.score for r in sparse_results]) / (len(sparse_results) or 1),
+        "avg_dense_score": sum([r.score for r in dense_results]) / (len(dense_results) or 1),
+    }
+
+
+def compute_rrf_score(item, fusion_k=60, w_sparse=0.5, w_dense=0.5):
+    if item.rank is None:
+        raise ValueError("Rank cannot be None for RRF score computation")
+    
+    if item.source == "sparse":
+        weight = w_sparse
+    else:
+        weight = w_dense
+
+    return weight * (1.0 / (fusion_k + item.rank))
+
+
 def fusion_retrieval(query: str, top_k: int = 5, k :int =60) -> FinalResult:
     sparse_results = sparse_fact_retrieval(query, top_k)
     dense_results = dense_fact_retrieval(query, top_k)
@@ -111,7 +226,9 @@ def fusion_retrieval(query: str, top_k: int = 5, k :int =60) -> FinalResult:
             raise ValueError("Rank cannot be None")
 
         key = f"{item.source}:{item.doc_id}"
-        scores[key] = scores.get(key, 0) + 1.0/(k+item.rank)
+        
+        rrf_score = compute_rrf_score(item, fusion_k=k, w_sparse=0.5, w_dense=0.5)
+        scores[key] = scores.get(key, 0) + rrf_score
 
         if key not in best_asin or best_asin[key].rank > item.rank:
             best_asin[key] = item
@@ -136,8 +253,11 @@ def fusion_retrieval(query: str, top_k: int = 5, k :int =60) -> FinalResult:
 
         fused_results.append(copied)
 
+    stats = compute_stats(sparse_results, dense_results)
+
     return FinalResult(
         query=query,
         resolved_asin=fused_results[0].asin_id if fused_results else None,
         items=fused_results,
+        retrieval_stats=stats
     )

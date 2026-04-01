@@ -2,4 +2,6 @@ Data/
 .env
 __pycache__/
 *.pyc
+rag-serve/
 README.md
+scripts/planner.py
